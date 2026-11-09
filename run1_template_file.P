@@ -1,0 +1,345 @@
+
+#meshfolder=meshes
+#RHO=1.060e-3      % density   (units consistent with mesh)
+#MU=4.0e-3         % viscosity (units consistent with mesh)
+#STAB=0.212e-3     % stabilization parameter related to 0.2 * Density
+#VEL_SCALE=1785.00 % Expected peak velocity (units consistent with mesh)
+#DT=0.001          % time step size (should assume that this is consistent with other units... e.g. use sec)
+#NO_STEPS=2300     % total number of steps to run the simulation (currently set for 1 cycle)
+
+%% EDIT %%
+% edit the patch ID labels
+#AorticInletID=8
+#Outlet=6
+#BC1=5
+#BC2=3
+#BC3=10
+#BCWall=1
+
+%% NOTE THAT I'M CALLING THIS A TEMPLATE BECAUSE I'M GOING TO COPY THIS INTO EACH DIRECTORY AND THEN CHANGE THE P FILES THERE
+%% BUT THERE ARE BASIC CHANGES I NEED TO MAKE FIRST
+
+%% EDIT %%
+% inward facing normal of Aorta inflow face ...
+#ai_nx= -0.556544 
+#ai_ny= -0.300254
+#ai_nz=  0.774665
+% center location of Aorta inflow face
+#inface_x = -20.0009 
+#inface_y = -40.5356
+#inface_z = -97.4674
+
+#AO_area=745.996
+#AO_radius=16
+
+#K = 1.0000e+04 % Pa/mm
+#KpK = 0.0  %  Kp/K   where K is #K and Kp is the constant for the dashpot; want ration  to be about 0.01
+#pen = 100000 % or try 1000000 if that doesn't work
+#Po = 8.3999e+03  % Pa or 63 mmHg
+
+#R1 = 10.1704
+#C1 = 0.0049
+
+#Cb1 = 0.0018
+#Rb1 = 27.5567
+#Cb2 = 0.0018
+#Rb2 = 27.5567
+#Cb3 = 0.0018
+#Rb3 = 27.5567
+
+#outdir=res1
+!SetOutputPath={#outdir}
+
+%  ---  Solver Groups & Matrices  --------------------------------------------
+% GET LATEST SOLVER FROM WILL
+% PCSBLOCK3X3
+
+!DefSolverGroup = { AADGroup           | TimeStepping              | FluidMat | AleMat }
+    !DefSolverSubGroup = { AADGroup    | seq_fp_linesearch         | FluidMat | AleMat }
+    %!SetSolverGroup = {AADGroup        | SUBITERATION              | 10                }
+    %!SetSolverGroup = {AADGroup        | ITERATION                 | 30                }
+    !SetSolverGroup = {AADGroup        | L2TOL                     | 1e-06             }
+    !SetSolverGroup = {AADGroup        | linesearchiter            | 1                 }
+    !SetSolverGroup = {AADGroup | AddVariables | Norms | InVel | Po | SpatK }
+    !SetSolverGroup = {AADGroup | export_initial_condition}
+
+!DefSolverMatrix={AleMat | SOLVER_SUPERLU | AleProblem}
+  !SetSolverMatrix={AleMat | SolverMatrixCalculation | EVALUATE_EVERY_BUILD}
+
+% problems linked to fluid matrix
+!DefSolverMatrix = {FluidMat | SOLVER_GMRES | FluidProblem  | coupletl | couplebc1 | couplebc2 | couplebc3 | couplewall }
+  !SetSolverMatrix = {FluidMat | Preconditioner | PCSBLOCK3X3 | scaling[none] | svars[P] | rvars[LM1;LM2;LM3;LMTL] | a_template[FF] | smod_template[Ap] | wmod_template[RR]}
+  !SetSolverMatrix = {FluidMat | SolverStats}
+  !SetSolverMatrix = {FluidMat | SolverMatrixCalculation | EVALUATE_EVERY_TIMESTEP}
+  !SetSolverMatrix = {FluidMat | KSPOption}
+    -ksp_atol 1e-8, -ksp_rtol 1e-5, -ksp_max_it 1000, -ksp_gmres_restart 1000, -ksp_gmres_modifiedgramschmidt, -ksp_norm_type unpreconditioned %-ksp_monitor
+
+!DefSolverMatrix = {Ap | SOLVER_GMRES}
+  !SetSolverMatrix = {Ap | Preconditioner | PCAMG}
+  !SetSolverMatrix = {Ap | matrix_built_by_petsc}
+  !SetSolverMatrix = {Ap | SolverStats}
+  !SetSolverMatrix = {Ap | KSPOption}
+    -ksp_atol 1e-8, -ksp_rtol 1e-5, -ksp_max_it 10, -ksp_gmres_restart 10, -ksp_gmres_modifiedgramschmidt %-ksp_monitor
+
+!DefSolverMatrix = {FF | SOLVER_PREONLY}
+  !SetSolverMatrix = {FF | Preconditioner | PCAMG}
+  !SetSolverMatrix = {FF | matrix_built_by_petsc}
+  !SetSolverMatrix = {FF | SolverStats}
+  !SetSolverMatrix = {FF | KSPOption}
+    -ksp_max_it 5, %-ksp_monitor
+
+!DefSolverMatrix = {RR | SOLVER_PREONLY}
+    !SetSolverMatrix = {RR | Preconditioner | PCLU | MUMPS}
+    !SetSolverMatrix = {RR | matrix_built_by_petsc}
+
+!DefTimeStepScheme = {TimeStepping}
+   1   #NO_STEPS   #DT
+
+%
+%  ---  Topologies & Basis sets  --------------------------------------------
+%
+
+%  Basis file...
+ !UseBasis={LinBasis3D  | TETRAHEDRAL_ELEMENT | NODAL_LAGRANGE1 | KEAST_LYNESS4}
+ !UseBasis={LinBasis2D  | TRIANGLE_ELEMENT    | NODAL_LAGRANGE1 | KEAST_LYNESS4}
+ !UseBasis={0Basis2D    | TRIANGLE_ELEMENT    | NODAL_LAGRANGE0 | KEAST_LYNESS4}
+ !UseBasis={DscBasis | TETRAHEDRAL_ELEMENT | NODAL_LAGRANGE0 | KEAST_LYNESS8}
+
+%  Topologies ...
+ !DefTopology={ TP1 | #meshfolder/model | LinBasis3D }
+
+ !DefTopology={Outletbc1 | #meshfolder/bcout1  | LinBasis2D}
+   !SetTopology={Outletbc1 | CreateInBoundary | [TP1;#BC1]}
+   !SetTopology={Outletbc1 | PartitioningWeight | 100}
+
+  !DefTopology={Outletbc2 | #meshfolder/bcout2  | LinBasis2D}
+    !SetTopology={Outletbc2 | CreateInBoundary | [TP1;#BC2]}
+    !SetTopology={Outletbc2 | PartitioningWeight | 100}
+
+ !DefTopology={Outletbc3 | #meshfolder/bcout3  | LinBasis2D}
+   !SetTopology={Outletbc3 | CreateInBoundary | [TP1;#BC3]}
+   !SetTopology={Outletbc3 | PartitioningWeight | 100}
+
+  !DefTopology={OutletTL | #meshfolder/tlout  | LinBasis2D}
+    !SetTopology={OutletTL | CreateInBoundary | [TP1;#TLOutlet]}
+    !SetTopology={OutletTL | PartitioningWeight | 100}
+
+  !DefTopology = {WallTP | #meshfolder/tpwall  | LinBasis2D}
+    !SetTopology = {WallTP | CreateInBoundary | [TP1;#BCWall]}
+    !SetTopology = {WallTP | PartitioningWeight | 100}
+
+ !DefTopology={Outletbc1Const | #meshfolder/bcout1_const  | 0Basis2D}
+   !SetTopology={Outletbc1Const | CreateInBoundary | [TP1;#BC1]}
+   !SetTopology={Outletbc1Const | SpatialConstant}
+
+ !DefTopology={Outletbc2Const | #meshfolder/bcout2_const  | 0Basis2D}
+   !SetTopology={Outletbc2Const | CreateInBoundary | [TP1;#BC2]}
+   !SetTopology={Outletbc2Const | SpatialConstant}
+
+ !DefTopology={Outletbc3Const | #meshfolder/bcout3_const  | 0Basis2D}
+   !SetTopology={Outletbc3Const | CreateInBoundary | [TP1;#BC3]}
+   !SetTopology={Outletbc3Const | SpatialConstant}
+
+ !DefTopology={OutletTLConst | #meshfolder/tlout_const  | 0Basis2D}
+   !SetTopology={OutletTLConst | CreateInBoundary | [TP1;#TLOutlet]}
+   !SetTopology={OutletTLConst | SpatialConstant}
+
+ !DefInterface={OneToOne | Outletbc1 | Outletbc1Const}
+ !DefInterface={OneToOne | Outletbc2 | Outletbc2Const}
+ !DefInterface={OneToOne | Outletbc3 | Outletbc3Const}
+ !DefInterface={OneToOne | OutletTL | OutletTLConst}
+
+ !DefInterface={ManyToOne | Outletbc1 | TP1 | #meshfolder/outbc1-tp1.IN | NestedInBndry[#BC1]}
+ !DefInterface={ManyToOne | Outletbc2 | TP1 | #meshfolder/outbc2-tp1.IN | NestedInBndry[#BC2]}
+ !DefInterface={ManyToOne | Outletbc3 | TP1 | #meshfolder/outbc3-tp1.IN | NestedInBndry[#BC3]}
+ !DefInterface={ManyToOne | OutletTL | TP1 | #meshfolder/outtl-tp1.IN | NestedInBndry[#TLOutlet]}
+ !DefInterface = {ManyToOne | WallTP    | TP1 | #meshfolder/tpwall-tp1.IN | NestedInBndry[#BCWall]}
+ 
+!DefTopology={TPD | meshes/mesh_disc | DscBasis}
+  !SetTopology={TPD | MakeDiscontinuous}
+!DefInterface={OneToOne | TP1 | TPD}
+
+%  Variable Pointers ...
+ !DefVariablePointer={X | TP1 | #meshfolder/model | 3}
+ !DefVariablePointer={X0 | TP1 | #meshfolder/model | 3}
+ !DefVariablePointer={P | TP1 | 1}
+   !SetVariablePointer={P | INIT_EXPR | Po_init}
+ !DefVariablePointer={V | TP1 | 3}
+ !DefVariablePointer={Po | TP1 | 1}
+   !SetVariablePointer={Po | TEMPORAL_UPDATE_EXPR | Po_expr}
+
+ !DefVariablePointer={Wel | TP1 | 3 }   
+ !DefVariablePointer={Qual   | TPD | 1}  % Stores the element quality  %
+ !DefVariablePointer={Estiff | TPD | 1}  % Variable that stores element stiffness
+
+ !DefVariablePointer={Norms | TP1 | meshes/norms.D | 3}
+ !DefVariablePointer = {SpatK | TP1 | meshes/spatK.D | 1}
+
+ !DefVariablePointer={InVel | TP1 | 3}
+   !SetVariablePointer={InVel | TEMPORAL_UPDATE_EXPR | inlet_expr}
+
+ !DefVariablePointer={LM1 | null_topology | 1 } % Outletbc1Const | 1}
+   !SetVariablePointer={LM1 | INIT_EXPR | Po_init}
+ !DefVariablePointer={LM2 | null_topology | 1 } %Outletbc2Const | 1}
+   !SetVariablePointer={LM2 | INIT_EXPR | Po_init}
+ !DefVariablePointer={LM3 | null_topology | 1 } %Outletbc3Const | 1}
+   !SetVariablePointer={LM3 | INIT_EXPR | Po_init}
+ !DefVariablePointer={LMTL | null_topology | 1 } %OutletTLConst | 1}
+   !SetVariablePointer={LMTL | INIT_EXPR | Po_init}
+ !DefVariablePointer = {LMWall | WallTP | 1 } 
+   !SetVariablePointer = {LMWall | INIT_EXPR | Po_init}
+
+ !DefDataPointer={inflow | datain/fluxin.D | 2 | 9591}
+
+ !SetExportFrequency={X | V | P | Wel | Qual | 1}
+% !SetExportFrequency={LM1 | LM2 | LM3 | LMTL | 10}
+ !SetExportFrequency = {X0 | Norms | LMWall | Estiff | InVel | Po | SpatK | -1}
+ 
+% --- Define Expressions ---------------------------------------------
+!DefExpression{influx1}
+  (-1)*interp(inflow,t)
+
+!DefExpression{influx} 
+  min(influx1,0) % if negative then 'shut' AV and make influx 0
+
+!DefExpression{Po_init}
+  #Po  % 63 mmHg
+
+!DefExpression{Po_expr}
+  P - P + Po_init
+
+!DefExpression{R1}
+  1/#R1
+ 
+!DefExpression{R1neg}
+  (-1)/#R1
+
+!DefExpression{Rb1}
+  1/#Rb1
+ 
+!DefExpression{Rb1neg}
+  (-1)/#Rb2
+
+!DefExpression{Rb2}
+  1/#Rb2
+ 
+!DefExpression{Rb2neg}
+  (-1)/#Rb2
+
+!DefExpression{Rb3}
+  1/#Rb3
+ 
+!DefExpression{Rb3neg}
+  (-1)/#Rb3
+
+% --- ALE Problem Specifications ---------------------------------------------
+!DefProblem={AleProblem | ale_element_dependent_stiffness}
+!UseVariablePointer={Space            | X0    }
+!UseVariablePointer={DomainVelocity   | Wel   }
+!UseVariablePointer={AleSpace         | X     }
+!UseVariablePointer={ElementQuality   | Qual  }
+!UseVariablePointer={ElementStiffness | Estiff}
+
+% change below (no flap, different BCs)
+% cut plane domain velocity will not move
+!Penalty-parameter={1}
+!Radius-ratio-metric
+!Boundary-patch-definitions
+   #BCWall           Wel  Dirichlet  V            % big wall
+   #AorticInletID    Wel  Dirichlet  0 0 0 
+   #BC1            Wel  Dirichlet  0 0 0 
+   #BC2            Wel  Dirichlet  0 0 0 
+   #BC3            Wel  Dirichlet  0 0 0 
+   #Outlet           Wel  Dirichlet  0 0 0 
+
+%  --- Fluid Problem Specifications  ------------------------------------------
+ !DefProblem={FluidProblem | G2_ALE_NONCON_NAVIER_STOKES_FLOW}
+   !UseVariablePointer={Space | X}
+   !UseVariablePointer={Velocity | V}     %   
+   !UseVariablePointer={DomainVelocity |  Wel }
+   !UseVariablePointer={Pressure | P}     %   !True-Navier-Poisson
+   !Density={#RHO}
+   !Viscosity={#MU}
+   !Velocity-scale={#VEL_SCALE}
+   !SetRootTopology={TP1}
+   !SetProblemTimeDiscretization={time_scheme_backward_euler | midpoint}
+   !Stabilization-parameters
+     1  1  1
+   !Boundary-patch-definitions     
+     #AorticInletID  V   dirichlet   InVel
+     #BC1            V   stabilized_neumann[1;#STAB] 0  0  0
+     #BC2            V   stabilized_neumann[1;#STAB] 0  0  0
+     #BC3            V   stabilized_neumann[1;#STAB] 0  0  0
+     #Outlet         V   stabilized_neumann[1;#STAB] 0  0  0
+
+     !DefExpression = {inlet_expr}
+       - 2 * (#ai_nx) * phi * influx / #AO_area
+       - 2 * (#ai_ny) * phi * influx / #AO_area
+       - 2 * (#ai_nz) * phi * influx / #AO_area
+
+     !DefExpression = {ir}
+      sqrt(((#inface_x)-X.1)^2 + ((#inface_y)-X.2)^2 + ((#inface_z)-X.3)^2)
+
+     !DefExpression = {phi}  
+       max(0,1 - (ir/(#AO_radius))^2)
+      
+%  --- LM Problem Specifications  ------------------------------------------
+  !DefProblem = {couplewall | fscoupling_problem}
+    !UseVariablePointer = {Space | X}
+    !Addterms
+      TestVariable[V], V[#pen]  source_wall
+    !Addterms
+      TestVariable[P*], V[trace;0]
+    !Boundary-conditions-not-required
+    !SetPerturbationBuild
+    !SetRootTopology = {WallTP}
+    !DefExpression = {source_wall}
+       -#pen * (1/(#DT + #KpK)) * (max((P.1-#Po),-500)/(#K*SpatK.1) * Norms.1 + (-X.1) + X0.1 ) 
+       -#pen * (1/(#DT + #KpK)) * (max((P.1-#Po),-500)/(#K*SpatK.1) * Norms.2 + (-X.2) + X0.2 )
+       -#pen * (1/(#DT + #KpK)) * (max((P.1-#Po),-500)/(#K*SpatK.1) * Norms.3 + (-X.3) + X0.3 )
+
+  % could probably just do flow splits in first iteration (windkessel below)
+  !DefProblem={couplebc1 | fscoupling_problem}
+   !UseVariablePointer={Space | X}
+   !Addterms
+     TestVariable[V], LM1[trace]
+   !Addterms
+     TestVariable[LM1*], LM1[Rb1] LM1[dt;#Cb1] Po[Rb1neg]  V[trace;-1]
+   !Boundary-conditions-not-required
+   !SetRootTopology = {Outletbc1}
+
+ !DefProblem={couplebc2 | fscoupling_problem}
+   !UseVariablePointer={Space | X}
+   !Addterms
+     TestVariable[V], LM2[trace]
+   !Addterms
+     TestVariable[LM2*], LM2[Rb2] LM2[dt;#Cb2] Po[Rb2neg]  V[trace;-1]
+   !Boundary-conditions-not-required
+   !SetRootTopology = {Outletbc2}
+
+!DefProblem={couplebc3 | fscoupling_problem}
+   !UseVariablePointer={Space | X}
+   !Addterms
+     TestVariable[V], LM3[trace]
+   !Addterms
+     TestVariable[LM3*], LM3[Rb3] LM3[dt;#Cb3] Po[Rb3neg]  V[trace;-1]
+   !Boundary-conditions-not-required
+   !SetRootTopology = {Outletbc3}
+
+ !DefProblem={coupletl | fscoupling_problem}
+   !UseVariablePointer={Space | X}
+   !Addterms
+     TestVariable[V], LMTL[trace]
+   !Addterms
+     TestVariable[LMTL*], LMTL[R1] LMTL[dt;#C1] Po[R1neg]  V[trace;-1]
+   !Boundary-conditions-not-required
+   !SetRootTopology = {OutletTL}
+
+     % P/R = Po/R - Cdp/dt + Q
+     % (P-Po)/R + Cdp/dt = -Q = dV/dt
+     % (P-Po)/R + Cdp/dt - dV/dt = 0
+     % LMTL[1/R]  Po[-1/R] LMTL[dt;#C1]  V[trace;-1]   
+
+     %  calc resistance (R)
+     %  R = (maxP-Po)/maxQin*(%outTL) * TLoutArea
+     %  C = dv/dp
