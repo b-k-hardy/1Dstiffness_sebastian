@@ -6,6 +6,7 @@ dependencies = [
     "cheartpy[all]",
     "jupyter>=1.1.1",
     "pyvista>=0.49.2",
+    "tqdm>=4.70.1",
 ]
 
 [tool.uv.sources]
