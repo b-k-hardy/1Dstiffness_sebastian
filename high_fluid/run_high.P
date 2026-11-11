@@ -56,8 +56,9 @@
     !SetSolverGroup = {AADGroup | AddVariables | Norms | InVel | Po }
     !SetSolverGroup = {AADGroup | export_initial_condition}
 
-!DefSolverMatrix={AleMat | SOLVER_SUPERLU | AleProblem}
-  !SetSolverMatrix={AleMat | SolverMatrixCalculation | EVALUATE_EVERY_BUILD}
+!DefSolverMatrix={AleMat | SOLVER_GMRES | AleProblem }
+  !SetSolverMatrix={AleMat|Preconditioner|PCAMG}
+  !SetSolverMatrix={AleMat| SolverMatrixCalculation | evaluate_every_timestep}
 
 % problems linked to fluid matrix
 !DefSolverMatrix = {FluidMat | SOLVER_GMRES | FluidProblem  | coupleout | couplebc1 | couplebc2 | couplebc3 | couplewall }
